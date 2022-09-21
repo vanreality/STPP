@@ -1,4 +1,7 @@
 test/
-result/
 data/
 image/
+results/
+.DS_Store
+*.code-workspace
+.nextflow*
