@@ -1,1 +1,1 @@
-# Panel-pipelines
+# Solid tumor NGS panel bioinformatics pipelines
