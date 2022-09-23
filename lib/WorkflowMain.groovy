@@ -36,5 +36,4 @@ class WorkflowMain {
             log.warn "No samplesheet specified, attempting to restart with csv files"
         }
     }
-
 }

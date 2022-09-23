@@ -24,7 +24,7 @@ WorkflowMain.initialise(workflow, params, log)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-include { STPP } from './workflow/stpp'
+include { STPP } from './workflows/stpp'
 
 // WORKFLOW: Run main nf-core/sarek analysis pipeline
 workflow MAIN_STPP {
