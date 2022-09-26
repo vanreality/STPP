@@ -4,7 +4,7 @@
 
 import org.yaml.snakeyaml.Yaml
 
-class Template {
+class STPPTemplate {
 	//
     // ANSII Colours used for terminal logging
     //
@@ -71,5 +71,13 @@ class Template {
         colorcodes['biwhite']    = monochrome_logs ? '' : "\033[1;97m"
 
         return colorcodes
+    }
+
+    //
+    // Does what is says on the tin
+    //
+    public static String dashedLine(monochrome_logs) {
+        Map colors = logColours(monochrome_logs)
+        return "-${colors.dim}----------------------------------------------------${colors.reset}-"
     }
 }

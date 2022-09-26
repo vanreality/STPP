@@ -8,11 +8,10 @@ class WorkflowMain {
     // Print help to screen if required
     //
     public static String help(workflow, params, log) {
-        def command = "nextflow run ${workflow.manifest.name} --input samplesheet.csv --genome GRCh38 -profile singularity"
+        def command = "nextflow run ${workflow.manifest.name} --input samplesheet.csv --genome GATK.GRCh38 -profile singularity"
         def help_string = ''
-        help_string += command
-        // help_string += Schema.paramsHelp(workflow, params, command)
-        // help_string += Template.dashedLine(params.monochrome_logs)
+        help_string += STPPSchema.paramsHelp(workflow, params, command)
+        help_string += STPPTemplate.dashedLine(params.monochrome_logs)
         return help_string
     }
 
@@ -28,12 +27,24 @@ class WorkflowMain {
 
         // Validate workflow parameters via the JSON schema
         if (params.validate_params) {
-            Schema.validateParameters(workflow, params, log)
+            STPPSchema.validateParameters(workflow, params, log)
         }
 
         // Check input has been provided
         if (!params.input) {
             log.warn "No samplesheet specified, attempting to restart with csv files"
         }
+    }
+
+    //
+    // Get attribute from genome config file e.g. fasta
+    //
+    public static Object getGenomeAttribute(params, attribute) {
+        if (params.genomes && params.genome && params.genomes.containsKey(params.genome)) {
+            if (params.genomes[ params.genome ].containsKey(attribute)) {
+                return params.genomes[ params.genome ][ attribute ]
+            }
+        }
+        return null
     }
 }
