@@ -9,14 +9,38 @@ WorkflowSTPP.initialise(params, log)
 
 // Check input path parameters to see if they exist
 def checkPathParamList = [
+    params.ascat_alleles,
+    params.ascat_loci,
+    params.ascat_loci_gc,
+    params.ascat_loci_rt,
     params.bwa,
     params.bwamem2,
     params.chr_dir,
+    params.dbnsfp,
+    params.dbnsfp_tbi,
+    params.dbsnp,
+    params.dbsnp_tbi,
     params.dict,
     params.dragmap,
     params.fasta,
     params.fasta_fai,
-    params.input
+    params.germline_resource,
+    params.germline_resource_tbi,
+    params.input,
+    params.intervals,
+    params.known_snps,
+    params.known_snps_tbi,
+    params.known_indels,
+    params.known_indels_tbi,
+    params.mappability,
+    params.pon,
+    params.pon_tbi,
+    params.snpeff_cache,
+    params.spliceai_indel,
+    params.spliceai_indel_tbi,
+    params.spliceai_snv,
+    params.spliceai_snv_tbi,
+    params.vep_cache
 ]
 
 /*
@@ -28,6 +52,102 @@ for (param in checkPathParamList) if (param) file(param, checkIfExists: true)
 
 // Set input, can either be from --input or from automatic retrieval in WorkflowSarek.groovy
 ch_input_sample = extract_csv(file(params.input, checkIfExists: true))
+
+// Fails when no intervals file provided
+if (!params.intervals){
+    log.error "Target file specified with `--intervals` must be provided"
+    exit 1
+}
+
+// Fails when wrongfull extension for intervals file
+if (params.intervals && !params.intervals.endsWith("bed")){
+    log.error "Target file specified with `--intervals` must be in BED format for targeted data"
+    exit 1
+}
+
+// Warns when missing files or params for mutect2
+if(params.tools && params.tools.split(',').contains('mutect2')){
+    if(!params.pon){
+        log.warn("No Panel-of-normal was specified for Mutect2.\nIt is highly recommended to use one: https://gatk.broadinstitute.org/hc/en-us/articles/5358911630107-Mutect2\nFor more information on how to create one: https://gatk.broadinstitute.org/hc/en-us/articles/5358921041947-CreateSomaticPanelOfNormals-BETA-")
+    }
+    if(!params.germline_resource){
+        log.warn("If Mutect2 is specified without a germline resource, no filtering will be done.\nIt is recommended to use one: https://gatk.broadinstitute.org/hc/en-us/articles/5358911630107-Mutect2")
+    }
+    if(params.pon && params.pon.contains("/Homo_sapiens/GATK/GRCh38/Annotation/GATKBundle/1000g_pon.hg38.vcf.gz")){
+        log.warn("The default Panel-of-Normals provided by GATK is used for Mutect2.\nIt is highly recommended to generate one from normal samples that are technical similar to the tumor ones.\nFor more information: https://gatk.broadinstitute.org/hc/en-us/articles/360035890631-Panel-of-Normals-PON-")
+    }
+}
+
+// Fails when missing resources for baserecalibrator
+if(!params.dbsnp && !params.known_indels){
+    if (params.step in ['mapping', 'markduplicates', 'prepare_recalibration', 'recalibrate'] && (!params.skip_tools || (params.skip_tools && !params.skip_tools.split(',').contains('baserecalibrator')))){
+        log.error "Base quality score recalibration requires at least one resource file. Please provide at least one of `--dbsnp` or `--known_indels`\nYou can skip this step in the workflow by adding `--skip_tools baserecalibrator` to the command."
+        exit 1
+    }
+}
+
+// Fails when missing tools for variant_calling or annotate
+if ((params.step == 'variant_calling' || params.step == 'annotate') && !params.tools) {
+    log.error "Please specify at least one tool when using `--step ${params.step}`."
+    exit 1
+}
+
+// Fails when missing sex information for CNV tools
+if (params.tools && (params.tools.split(',').contains('ascat') || params.tools.split(',').contains('controlfreec'))) {
+    ch_input_sample.map{
+        if (it[0].sex == 'NA' ) {
+            log.error "Please specify sex information for each sample in your samplesheet when using '--tools' with 'ascat' or 'controlfreec'."
+            exit 1
+        }
+    }
+}
+
+// Save AWS IGenomes file containing annotation version
+def anno_readme = params.genomes[params.genome]?.readme
+if (anno_readme && file(anno_readme).exists()) {
+    file("${params.outdir}/genome/").mkdirs()
+    file(anno_readme).copyTo("${params.outdir}/genome/")
+}
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    IMPORT LOCAL MODULES/SUBWORKFLOWS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+// Initialize file channels based on params, defined in the params.genomes[params.genome] scope
+
+
+// Initialize value channels based on params, defined in the params.genomes[params.genome] scope
+
+
+// Initialize files channels based on params, not defined within the params.genomes[params.genome] scope
+
+
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    IMPORT LOCAL/NF-CORE MODULES/SUBWORKFLOWS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    RUN MAIN WORKFLOW
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
 
 workflow STPP{
 
@@ -59,6 +179,10 @@ def extract_csv(csv_file) {
 
     Channel.from(csv_file).splitCsv(header: true)
         .map{ row ->
+            if (!(row.patient && row.sample)){
+                log.error "Missing field in csv file header. The csv file must have fields named 'patient' and 'sample'."
+                System.exit(1)
+            }
             if (params.step == "mapping") {
                 if ( !row.lane ) {  // This also handles the case where the lane is left as an empty string
                     log.error('The sample sheet should specify a lane for patient "' + row.patient.toString() + '" and sample "' + row.sample.toString() + '".')
@@ -88,10 +212,6 @@ def extract_csv(csv_file) {
         //Retrieves number of lanes by grouping together by patient and sample and counting how many entries there are for this combination
         .map{ row ->
             sample_count_all++
-            if (!(row.patient && row.sample)){
-                log.error "Missing field in csv file header. The csv file must have fields named 'patient' and 'sample'."
-                System.exit(1)
-            }
             [[row.patient.toString(), row.sample.toString()], row]
         }.groupTuple()
         .map{ meta, rows ->
@@ -165,7 +285,7 @@ def extract_csv(csv_file) {
 
             if (params.step == 'mapping') return [meta, [fastq_1, fastq_2]]
             else {
-                log.error "Samplesheet contains fastq files but step is `$params.step`. Please check your samplesheet or adjust the step parameter.\nhttps://nf-co.re/sarek/usage#input-samplesheet-configurations"
+                log.error "Samplesheet contains fastq files but step is `$params.step`. Please check your samplesheet or adjust the step parameter."
                 System.exit(1)
             }
         }
@@ -196,6 +316,8 @@ def flowcellLaneFromFastq(path) {
         fcid = fields[2]
     } else if (fields.size() == 5) {
         fcid = fields[0]
+    } else {
+        fcid = "NA"
     }
     return fcid
 }
