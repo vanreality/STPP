@@ -9,19 +9,12 @@ WorkflowSTPP.initialise(params, log)
 
 // Check input path parameters to see if they exist
 def checkPathParamList = [
-    params.ascat_alleles,
-    params.ascat_loci,
-    params.ascat_loci_gc,
-    params.ascat_loci_rt,
     params.bwa,
-    params.bwamem2,
-    params.chr_dir,
     params.dbnsfp,
     params.dbnsfp_tbi,
     params.dbsnp,
     params.dbsnp_tbi,
     params.dict,
-    params.dragmap,
     params.fasta,
     params.fasta_fai,
     params.germline_resource,
@@ -92,16 +85,6 @@ if ((params.step == 'variant_calling' || params.step == 'annotate') && !params.t
     exit 1
 }
 
-// Fails when missing sex information for CNV tools
-if (params.tools && (params.tools.split(',').contains('ascat') || params.tools.split(',').contains('controlfreec'))) {
-    ch_input_sample.map{
-        if (it[0].sex == 'NA' ) {
-            log.error "Please specify sex information for each sample in your samplesheet when using '--tools' with 'ascat' or 'controlfreec'."
-            exit 1
-        }
-    }
-}
-
 // Save AWS IGenomes file containing annotation version
 def anno_readme = params.genomes[params.genome]?.readme
 if (anno_readme && file(anno_readme).exists()) {
@@ -116,7 +99,15 @@ if (anno_readme && file(anno_readme).exists()) {
 */
 
 // Initialize file channels based on params, defined in the params.genomes[params.genome] scope
-
+dbsnp              = params.dbsnp              ? Channel.fromPath(params.dbsnp).collect()                    : Channel.value([])
+known_snps         = params.known_snps         ? Channel.fromPath(params.known_snps).collect()               : Channel.value([])
+fasta              = params.fasta              ? Channel.fromPath(params.fasta).collect()                    : Channel.empty()
+fasta_fai          = params.fasta_fai          ? Channel.fromPath(params.fasta_fai).collect()                : Channel.empty()
+germline_resource  = params.germline_resource  ? Channel.fromPath(params.germline_resource).collect()        : Channel.value([]) //Mutec2 does not require a germline resource, so set to optional input
+known_indels       = params.known_indels       ? Channel.fromPath(params.known_indels).collect()             : Channel.value([])
+known_snps         = params.known_snps         ? Channel.fromPath(params.known_snps).collect()               : Channel.value([])
+mappability        = params.mappability        ? Channel.fromPath(params.mappability).collect()              : Channel.value([])
+pon                = params.pon                ? Channel.fromPath(params.pon).collect()                      : Channel.value([]) //PON is optional for Mutect2 (but highly recommended)
 
 // Initialize value channels based on params, defined in the params.genomes[params.genome] scope
 
@@ -131,6 +122,14 @@ if (anno_readme && file(anno_readme).exists()) {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// Build indices if needed
+include { PREPARE_GENOME                                       } from '../subworkflows/local/prepare_genome'
+
+// Run FASTQC
+include { RUN_FASTQC                                           } from '../subworkflows/nf-core/run_fastqc'
+
+// TRIM/SPLIT FASTQ Files
+include { FASTP                                                } from '../modules/fastp/main'
 
 
 
@@ -150,6 +149,163 @@ if (anno_readme && file(anno_readme).exists()) {
 */
 
 workflow STPP{
+
+    // To gather all QC reports for MultiQC
+    ch_reports  = Channel.empty()
+    // To gather used softwares versions for MultiQC
+    ch_versions = Channel.empty()
+
+
+    // Build indices if needed
+    PREPARE_GENOME(
+        dbsnp,
+        fasta,
+        fasta_fai,
+        germline_resource,
+        known_indels,
+        known_snps,
+        pon)
+
+    // Gather built indices or get them from the params
+    bwa                    = params.fasta                   ? params.bwa                        ? Channel.fromPath(params.bwa).collect()                   : PREPARE_GENOME.out.bwa                   : []
+    dict                   = params.fasta                   ? params.dict                       ? Channel.fromPath(params.dict).collect()                  : PREPARE_GENOME.out.dict                  : []
+    fasta_fai              = params.fasta                   ? params.fasta_fai                  ? Channel.fromPath(params.fasta_fai).collect()             : PREPARE_GENOME.out.fasta_fai             : []
+    dbsnp_tbi              = params.dbsnp                   ? params.dbsnp_tbi                  ? Channel.fromPath(params.dbsnp_tbi).collect()             : PREPARE_GENOME.out.dbsnp_tbi             : Channel.value([])
+    germline_resource_tbi  = params.germline_resource       ? params.germline_resource_tbi      ? Channel.fromPath(params.germline_resource_tbi).collect() : PREPARE_GENOME.out.germline_resource_tbi : []
+    known_snps_tbi         = params.known_snps              ? params.known_snps_tbi             ? Channel.fromPath(params.known_snps_tbi).collect()        : PREPARE_GENOME.out.known_snps_tbi        : Channel.value([])
+    known_indels_tbi       = params.known_indels            ? params.known_indels_tbi           ? Channel.fromPath(params.known_indels_tbi).collect()      : PREPARE_GENOME.out.known_indels_tbi      : Channel.value([])
+    pon_tbi                = params.pon                     ? params.pon_tbi                    ? Channel.fromPath(params.pon_tbi).collect()               : PREPARE_GENOME.out.pon_tbi               : []
+    msisensorpro_scan      = PREPARE_GENOME.out.msisensorpro_scan
+
+    // Gather index for mapping given the chosen aligner
+    ch_map_index = bwa
+
+    // known_sites is made by grouping both the dbsnp and the known snps/indels resources
+    // Which can either or both be optional
+    known_sites_indels     = dbsnp.concat(known_indels).collect()
+    known_sites_indels_tbi = dbsnp_tbi.concat(known_indels_tbi).collect()
+
+    known_sites_snps     = dbsnp.concat(known_snps).collect()
+    known_sites_snps_tbi = dbsnp_tbi.concat(known_snps_tbi).collect()
+
+    // Gather used softwares versions
+    ch_versions = ch_versions.mix(PREPARE_GENOME.out.versions)
+
+
+    // STEP 1: MAPPING
+    if (params.step == 'mapping') {
+
+        // BEFORE MAPPING: QC & TRIM
+        // `--skip_tools fastqc` to skip fastqc
+        // trim only with `--trim_fastq`
+        // additional options to be set up
+
+        // QC
+        if (!(params.skip_tools && params.skip_tools.split(',').contains('fastqc'))) {
+            RUN_FASTQC(ch_input_fastq)
+
+            ch_reports  = ch_reports.mix(RUN_FASTQC.out.fastqc_zip.collect{meta, logs -> logs})
+            ch_versions = ch_versions.mix(RUN_FASTQC.out.versions)
+        }
+
+        ch_reads_fastp = ch_input_fastq
+
+        // Trimming and/or splitting
+        if (params.trim_fastq || params.split_fastq > 0) {
+
+            save_trimmed_fail = false
+            save_merged = false
+            FASTP(ch_reads_fastp, save_trimmed_fail, save_merged)
+
+            ch_reports = ch_reports.mix(
+                                    FASTP.out.json.collect{meta, json -> json},
+                                    FASTP.out.html.collect{meta, html -> html}
+                                    )
+
+            if(params.split_fastq){
+                ch_reads_to_map = FASTP.out.reads.map{ key, reads ->
+
+                        read_files = reads.sort{ a,b -> a.getName().tokenize('.')[0] <=> b.getName().tokenize('.')[0] }.collate(2)
+                        [[
+                            data_type:key.data_type,
+                            id:key.id,
+                            numLanes:key.numLanes,
+                            patient: key.patient,
+                            read_group:key.read_group,
+                            sample:key.sample,
+                            sex:key.sex,
+                            size:read_files.size(),
+                            status:key.status,
+                        ],
+                        read_files]
+                    }.transpose()
+            }else{
+                ch_reads_to_map = FASTP.out.reads
+            }
+
+            ch_versions = ch_versions.mix(FASTP.out.versions)
+        } else {
+            ch_reads_to_map = ch_reads_fastp
+        }
+
+        // MAPPING READS TO REFERENCE GENOME
+        // reads will be sorted
+        ch_reads_to_map = ch_reads_to_map.map{ meta, reads ->
+            // update ID when no multiple lanes or splitted fastqs
+            new_id = meta.size * meta.numLanes == 1 ? meta.sample : meta.id
+
+            [[
+                data_type:  meta.data_type,
+                id:         new_id,
+                numLanes:   meta.numLanes,
+                patient:    meta.patient,
+                read_group: meta.read_group,
+                sample:     meta.sample,
+                sex:        meta.sex,
+                size:       meta.size,
+                status:     meta.status,
+                ],
+            reads]
+        }
+
+        sort_bam = true
+        GATK4_MAPPING(ch_reads_to_map, ch_map_index, sort_bam)
+
+        // Grouping the bams from the same samples not to stall the workflow
+        ch_bam_mapped = GATK4_MAPPING.out.bam.map{ meta, bam ->
+            numLanes = meta.numLanes ?: 1
+            size     = meta.size     ?: 1
+
+            // update ID to be based on the sample name
+            // update data_type
+            // remove no longer necessary fields:
+            //   read_group: Now in the BAM header
+            //     numLanes: Was only needed for mapping
+            //         size: Was only needed for mapping
+            new_meta = [
+                        id:meta.sample,
+                        data_type:"bam",
+                        patient:meta.patient,
+                        sample:meta.sample,
+                        sex:meta.sex,
+                        status:meta.status,
+                    ]
+
+            // Use groupKey to make sure that the correct group can advance as soon as it is complete
+            // and not stall the workflow until all reads from all channels are mapped
+            [ groupKey(new_meta, numLanes * size), bam]
+        }.groupTuple()
+
+
+        // TODO
+    }
+
+
+
+
+
+
+
 
 }
 
@@ -245,7 +401,7 @@ def extract_csv(csv_file) {
         // 1. the sample-sheet only contains normal-samples, but some of the requested tools require tumor-samples, and
         // 2. the sample-sheet only contains tumor-samples, but some of the requested tools require normal-samples.
         if ((sample_count_normal == sample_count_all) && params.tools) { // In this case, the sample-sheet contains no tumor-samples
-            def tools_tumor = ['ascat', 'controlfreec', 'mutect2', 'msisensorpro']
+            def tools_tumor = ['mutect2', 'msisensorpro']
             def tools_tumor_asked = []
             tools_tumor.each{ tool ->
                 if (params.tools.split(',').contains(tool)) tools_tumor_asked.add(tool)

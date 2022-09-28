@@ -15,19 +15,11 @@ nextflow.enable.dsl = 2
     GENOME PARAMETER VALUES
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-params.ascat_alleles         = WorkflowMain.getGenomeAttribute(params, 'ascat_alleles')
-params.ascat_genome          = WorkflowMain.getGenomeAttribute(params, 'ascat_genome')
-params.ascat_loci            = WorkflowMain.getGenomeAttribute(params, 'ascat_loci')
-params.ascat_loci_gc         = WorkflowMain.getGenomeAttribute(params, 'ascat_loci_gc')
-params.ascat_loci_rt         = WorkflowMain.getGenomeAttribute(params, 'ascat_loci_rt')
 params.bwa                   = WorkflowMain.getGenomeAttribute(params, 'bwa')
-params.bwamem2               = WorkflowMain.getGenomeAttribute(params, 'bwamem2')
-params.chr_dir               = WorkflowMain.getGenomeAttribute(params, 'chr_dir')
 params.dbsnp                 = WorkflowMain.getGenomeAttribute(params, 'dbsnp')
 params.dbsnp_tbi             = WorkflowMain.getGenomeAttribute(params, 'dbsnp_tbi')
 params.dbsnp_vqsr            = WorkflowMain.getGenomeAttribute(params, 'dbsnp_vqsr')
 params.dict                  = WorkflowMain.getGenomeAttribute(params, 'dict')
-params.dragmap               = WorkflowMain.getGenomeAttribute(params, 'dragmap')
 params.fasta                 = WorkflowMain.getGenomeAttribute(params, 'fasta')
 params.fasta_fai             = WorkflowMain.getGenomeAttribute(params, 'fasta_fai')
 params.germline_resource     = WorkflowMain.getGenomeAttribute(params, 'germline_resource')

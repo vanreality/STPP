@@ -1,6 +1,6 @@
 test/
 data/
-image/
+images/
 results/
 .DS_Store
 *.code-workspace

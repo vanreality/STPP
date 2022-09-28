@@ -181,9 +181,7 @@
                     "type": "string",
                     "default": "bwa-mem",
                     "fa_icon": "fas fa-puzzle-piece",
-                    "enum": ["bwa-mem", "bwa-mem2", "dragmap"],
                     "description": "Specify aligner to be used to map reads to reference genome.",
-                    "help_text": "`Sarek` will build missing indices automatically if not provided. Set `--bwa false` if indices should be (re-)built.\nIf `DragMap` is selected as aligner, it is recommended to skip baserecalibration with `--skip_tools baserecalibrator`. See [here](https://gatk.broadinstitute.org/hc/en-us/articles/4407897446939--How-to-Run-germline-single-sample-short-variant-discovery-in-DRAGEN-mode) for more info.\n",
                     "hidden": true
                 },
                 "save_bam_mapped": {
@@ -227,110 +225,6 @@
             "default": "",
             "fa_icon": "fas fa-toolbox",
             "properties": {
-                "only_paired_variant_calling": {
-                    "type": "boolean",
-                    "fa_icon": "fas fa-forward",
-                    "description": "If true, skips germline variant calling for matched normal to tumor sample. Normal samples without matched tumor will still be processed through germline variant calling tools.",
-                    "help_text": "This can speed up computation for somatic variant calling with matched normal samples. If false, all normal samples are processed as well through the germline variantcalling tools. If true, only somatic variant calling is done."
-                },
-                "joint_germline": {
-                    "type": "boolean",
-                    "fa_icon": "fas fa-toolbox",
-                    "description": "Turn on the joint germline variant calling for GATK haplotypecaller",
-                    "help_text": "Uses all normal germline samples (as designated by `status` in the input csv) in the joint germline variant calling process."
-                },
-                "ascat_min_base_qual": {
-                    "type": "number",
-                    "default": 20,
-                    "fa_icon": "fas fa-greater-than",
-                    "description": "Overwrite Ascat min base quality required for a read to be counted.",
-                    "hidden": true,
-                    "help_text": "For more details see [here](https://raw.githubusercontent.com/VanLoo-lab/ascat/master/man/ASCAT-manual.pdf)"
-                },
-                "ascat_min_counts": {
-                    "type": "number",
-                    "default": 10,
-                    "fa_icon": "fas fa-align-center",
-                    "description": "Overwrite Ascat minimum depth required in the normal for a SNP to be considered.",
-                    "hidden": true,
-                    "help_text": "For more details, see [here](https://raw.githubusercontent.com/VanLoo-lab/ascat/master/man/ASCAT-manual.pdf)."
-                },
-                "ascat_min_map_qual": {
-                    "type": "number",
-                    "default": 35,
-                    "fa_icon": "fas fa-balance-scale-left",
-                    "description": "Overwrite Ascat min mapping quality required for a read to be counted.",
-                    "hidden": true,
-                    "help_text": "For more details, see [here](https://raw.githubusercontent.com/VanLoo-lab/ascat/master/man/ASCAT-manual.pdf)."
-                },
-                "ascat_ploidy": {
-                    "type": "number",
-                    "fa_icon": "fas fa-bacon",
-                    "help_text": "ASCAT: optional argument to override ASCAT optimization and supply psi parameter (expert parameter, don\u2019t adapt unless you know what you\u2019re doing). See [here](https://raw.githubusercontent.com/VanLoo-lab/ascat/master/man/ASCAT-manual.pdf)",
-                    "hidden": true,
-                    "description": "Overwrite ASCAT ploidy."
-                },
-                "ascat_purity": {
-                    "type": "number",
-                    "fa_icon": "fas fa-broom",
-                    "description": "Overwrite ASCAT purity.",
-                    "help_text": "Overwrites ASCAT's `rho_manual` parameter. Expert use only, see [here](https://raw.githubusercontent.com/VanLoo-lab/ascat/master/man/ASCAT-manual.pdf) for details.\nRequires that `--ascat_ploidy` is set.",
-                    "hidden": true
-                },
-                "cf_coeff": {
-                    "type": "number",
-                    "default": 0.05,
-                    "fa_icon": "fas fa-wrench",
-                    "description": "Overwrite Control-FREEC coefficientOfVariation",
-                    "hidden": true,
-                    "help_text": "Details, see [ControlFREEC manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html)."
-                },
-                "cf_contamination_adjustment": {
-                    "type": "boolean",
-                    "fa_icon": "fas fa-broom",
-                    "description": "Overwrite Control-FREEC contaminationAdjustement",
-                    "hidden": true,
-                    "help_text": "Details, see [ControlFREEC manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html)."
-                },
-                "cf_contamination": {
-                    "type": "number",
-                    "default": 0,
-                    "fa_icon": "fas fa-broom",
-                    "description": "Design known contamination value for Control-FREEC",
-                    "hidden": true,
-                    "help_text": "Details, see [ControlFREEC manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html)."
-                },
-                "cf_minqual": {
-                    "type": "number",
-                    "default": 0,
-                    "fa_icon": "fas fa-greater-than",
-                    "hidden": true,
-                    "description": "Minimal sequencing quality for a position to be considered in BAF analysis.",
-                    "help_text": "Details, see [ControlFREEC manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html)."
-                },
-                "cf_mincov": {
-                    "type": "number",
-                    "default": 0,
-                    "fa_icon": "fas fa-align-center",
-                    "hidden": true,
-                    "description": "Minimal read coverage for a position to be considered in BAF analysis.",
-                    "help_text": "Details, see [ControlFREEC manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html)."
-                },
-                "cf_ploidy": {
-                    "type": "integer",
-                    "default": 2,
-                    "fa_icon": "fas fa-bacon",
-                    "help_text": "In case of doubt, you can set different values and Control-FREEC will select the one that explains most observed CNAs Example: ploidy=2 , ploidy=2,3,4. For more details, see the [manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html).",
-                    "description": "Genome ploidy used by ControlFREEC",
-                    "hidden": true
-                },
-                "cf_window": {
-                    "type": "number",
-                    "fa_icon": "fas fa-window-maximize",
-                    "description": "Overwrite Control-FREEC window size.",
-                    "help_text": "Details, see [ControlFREEC manual](http://boevalab.inf.ethz.ch/FREEC/tutorial.html).",
-                    "hidden": true
-                },
                 "pon": {
                     "type": "string",
                     "fa_icon": "fas fa-file",
@@ -491,61 +385,12 @@
                     "fa_icon": "fas fa-book",
                     "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`.\n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
                 },
-                "ascat_genome": {
-                    "type": "string",
-                    "fa_icon": "fa-solid fa-text",
-                    "description": "ASCAT genome.",
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately.\n\nMust be set to run ASCAT, either hg19 or hg38. If you use AWS iGenomes, this has already been set for you appropriately.",
-                    "hidden": true
-                },
-                "ascat_alleles": {
-                    "type": "string",
-                    "fa_icon": "fas fa-file",
-                    "description": "Path to ASCAT allele zip file.",
-                    "hidden": true,
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately."
-                },
-                "ascat_loci": {
-                    "type": "string",
-                    "fa_icon": "fas fa-file",
-                    "description": "Path to ASCAT loci zip file.",
-                    "hidden": true,
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately."
-                },
-                "ascat_loci_gc": {
-                    "type": "string",
-                    "fa_icon": "fas fa-file",
-                    "description": "Path to ASCAT GC content correction file.",
-                    "hidden": true,
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately."
-                },
-                "ascat_loci_rt": {
-                    "type": "string",
-                    "fa_icon": "fas fa-file",
-                    "description": "Path to ASCAT RT (replictiming) correction file.",
-                    "hidden": true,
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately."
-                },
                 "bwa": {
                     "type": "string",
                     "fa_icon": "fas fa-copy",
                     "description": "Path to BWA mem indices.",
                     "help_text": "If you use AWS iGenomes, this has already been set for you appropriately.\n\nIf you wish to recompute indices available on igenomes, set `--bwa false`.\n\n> **NB** If none provided, will be generated automatically from the FASTA reference. Combine with `--save_reference` to save for future runs.",
                     "hidden": true
-                },
-                "bwamem2": {
-                    "type": "string",
-                    "fa_icon": "fas fa-copy",
-                    "description": "Path to bwa-mem2 mem indices.",
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately.\n\nIf you wish to recompute indices available on igenomes, set `--bwamem2 false`.\n\n> **NB** If none provided, will be generated automatically from the FASTA reference, if `--aligner bwa-mem2` is specified. Combine with `--save_reference` to save for future runs.",
-                    "hidden": true
-                },
-                "chr_dir": {
-                    "type": "string",
-                    "fa_icon": "fas fa-folder-open",
-                    "description": "Path to chromosomes folder used with ControLFREEC.",
-                    "hidden": true,
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately."
                 },
                 "dbsnp": {
                     "type": "string",
@@ -571,13 +416,6 @@
                     "fa_icon": "fas fa-file",
                     "description": "Path to FASTA dictionary file.",
                     "help_text": "If you use AWS iGenomes, this has already been set for you appropriately.\n\n> **NB** If none provided, will be generated automatically from the FASTA reference. Combine with `--save_reference` to save for future runs.",
-                    "hidden": true
-                },
-                "dragmap": {
-                    "type": "string",
-                    "fa_icon": "fas fa-copy",
-                    "description": "Path to dragmap indices.",
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately.\n\nIf you wish to recompute indices available on igenomes, set `--dragmap false`.\n\n> **NB** If none provided, will be generated automatically from the FASTA reference, if `--aligner dragmap` is specified. Combine with `--save_reference` to save for future runs.",
                     "hidden": true
                 },
                 "fasta": {
