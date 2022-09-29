@@ -122,6 +122,9 @@ pon                = params.pon                ? Channel.fromPath(params.pon).co
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+// Create samplesheets to restart from different steps
+include { MAPPING_CSV                                          } from '../subworkflows/local/mapping_csv'
+
 // Build indices if needed
 include { PREPARE_GENOME                                       } from '../subworkflows/local/prepare_genome'
 
@@ -130,6 +133,12 @@ include { RUN_FASTQC                                           } from '../subwor
 
 // TRIM/SPLIT FASTQ Files
 include { FASTP                                                } from '../modules/fastp/main'
+
+// Map input reads to reference genome
+include { GATK4_MAPPING                                        } from '../subworkflows/nf-core/gatk4/mapping/main'
+
+// Merge and index BAM files (optional)
+include { MERGE_INDEX_BAM                                      } from '../subworkflows/nf-core/merge_index_bam'
 
 
 
@@ -202,16 +211,16 @@ workflow STPP{
 
         // QC
         if (!(params.skip_tools && params.skip_tools.split(',').contains('fastqc'))) {
-            RUN_FASTQC(ch_input_fastq)
+            RUN_FASTQC(ch_input_sample)
 
             ch_reports  = ch_reports.mix(RUN_FASTQC.out.fastqc_zip.collect{meta, logs -> logs})
             ch_versions = ch_versions.mix(RUN_FASTQC.out.versions)
         }
 
-        ch_reads_fastp = ch_input_fastq
+        ch_reads_fastp = ch_input_sample
 
         // Trimming and/or splitting
-        if (params.trim_fastq || params.split_fastq > 0) {
+        if (params.trim_fastq) {
 
             save_trimmed_fail = false
             save_merged = false
@@ -296,11 +305,25 @@ workflow STPP{
             [ groupKey(new_meta, numLanes * size), bam]
         }.groupTuple()
 
+        // gatk4 markduplicates can handle multiple bams as input, so no need to merge/index here
+        // Except if and only if skipping markduplicates or saving mapped bams
+        if (params.save_bam_mapped || (params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) {
 
-        // TODO
+            // bams are merged (when multiple lanes from the same sample), indexed and then converted to cram
+            MERGE_INDEX_BAM(ch_bam_mapped)
+
+            // Create CSV to restart from this step
+            MAPPING_CSV(MERGE_INDEX_BAM.out.bam_bai)
+
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(MERGE_INDEX_BAM.out.versions)
+        }
+
+        // Gather used softwares versions
+        ch_versions = ch_versions.mix(GATK4_MAPPING.out.versions)
     }
 
-
+    // STEP 2: 
 
 
 
