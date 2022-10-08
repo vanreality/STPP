@@ -31,7 +31,6 @@ params.known_snps_vqsr       = WorkflowMain.getGenomeAttribute(params, 'known_sn
 params.known_indels          = WorkflowMain.getGenomeAttribute(params, 'known_indels')
 params.known_indels_tbi      = WorkflowMain.getGenomeAttribute(params, 'known_indels_tbi')
 params.known_indels_vqsr     = WorkflowMain.getGenomeAttribute(params, 'known_indels_vqsr')
-params.mappability           = WorkflowMain.getGenomeAttribute(params, 'mappability')
 params.pon                   = WorkflowMain.getGenomeAttribute(params, 'pon')
 params.pon_tbi               = WorkflowMain.getGenomeAttribute(params, 'pon_tbi')
 params.snpeff_db             = WorkflowMain.getGenomeAttribute(params, 'snpeff_db')

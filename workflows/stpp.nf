@@ -25,7 +25,6 @@ def checkPathParamList = [
     params.known_snps_tbi,
     params.known_indels,
     params.known_indels_tbi,
-    params.mappability,
     params.pon,
     params.pon_tbi,
     params.snpeff_cache,
@@ -66,9 +65,9 @@ if(params.tools && params.tools.split(',').contains('mutect2')){
     if(!params.germline_resource){
         log.warn("If Mutect2 is specified without a germline resource, no filtering will be done.\nIt is recommended to use one: https://gatk.broadinstitute.org/hc/en-us/articles/5358911630107-Mutect2")
     }
-    if(params.pon && params.pon.contains("/Homo_sapiens/GATK/GRCh38/Annotation/GATKBundle/1000g_pon.hg38.vcf.gz")){
-        log.warn("The default Panel-of-Normals provided by GATK is used for Mutect2.\nIt is highly recommended to generate one from normal samples that are technical similar to the tumor ones.\nFor more information: https://gatk.broadinstitute.org/hc/en-us/articles/360035890631-Panel-of-Normals-PON-")
-    }
+    // if(params.pon && params.pon.contains("/Homo_sapiens/GATK/GRCh38/Annotation/GATKBundle/1000g_pon.hg38.vcf.gz")){
+    //     log.warn("The default Panel-of-Normals provided by GATK is used for Mutect2.\nIt is highly recommended to generate one from normal samples that are technical similar to the tumor ones.\nFor more information: https://gatk.broadinstitute.org/hc/en-us/articles/360035890631-Panel-of-Normals-PON-")
+    // }
 }
 
 // Fails when missing resources for baserecalibrator
@@ -85,13 +84,6 @@ if ((params.step == 'variant_calling' || params.step == 'annotate') && !params.t
     exit 1
 }
 
-// Save AWS IGenomes file containing annotation version
-def anno_readme = params.genomes[params.genome]?.readme
-if (anno_readme && file(anno_readme).exists()) {
-    file("${params.outdir}/genome/").mkdirs()
-    file(anno_readme).copyTo("${params.outdir}/genome/")
-}
-
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     IMPORT LOCAL MODULES/SUBWORKFLOWS
@@ -106,7 +98,6 @@ fasta_fai          = params.fasta_fai          ? Channel.fromPath(params.fasta_f
 germline_resource  = params.germline_resource  ? Channel.fromPath(params.germline_resource).collect()        : Channel.value([]) //Mutec2 does not require a germline resource, so set to optional input
 known_indels       = params.known_indels       ? Channel.fromPath(params.known_indels).collect()             : Channel.value([])
 known_snps         = params.known_snps         ? Channel.fromPath(params.known_snps).collect()               : Channel.value([])
-mappability        = params.mappability        ? Channel.fromPath(params.mappability).collect()              : Channel.value([])
 pon                = params.pon                ? Channel.fromPath(params.pon).collect()                      : Channel.value([]) //PON is optional for Mutect2 (but highly recommended)
 
 // Initialize value channels based on params, defined in the params.genomes[params.genome] scope
@@ -217,110 +208,110 @@ workflow STPP{
             ch_versions = ch_versions.mix(RUN_FASTQC.out.versions)
         }
 
-        ch_reads_fastp = ch_input_sample
+        // ch_reads_fastp = ch_input_sample
 
-        // Trimming and/or splitting
-        if (params.trim_fastq) {
+        // // Trimming and/or splitting
+        // if (params.trim_fastq) {
 
-            save_trimmed_fail = false
-            save_merged = false
-            FASTP(ch_reads_fastp, save_trimmed_fail, save_merged)
+        //     save_trimmed_fail = false
+        //     save_merged = false
+        //     FASTP(ch_reads_fastp, save_trimmed_fail, save_merged)
 
-            ch_reports = ch_reports.mix(
-                                    FASTP.out.json.collect{meta, json -> json},
-                                    FASTP.out.html.collect{meta, html -> html}
-                                    )
+        //     ch_reports = ch_reports.mix(
+        //                             FASTP.out.json.collect{meta, json -> json},
+        //                             FASTP.out.html.collect{meta, html -> html}
+        //                             )
 
-            if(params.split_fastq){
-                ch_reads_to_map = FASTP.out.reads.map{ key, reads ->
+        //     if(params.split_fastq){
+        //         ch_reads_to_map = FASTP.out.reads.map{ key, reads ->
 
-                        read_files = reads.sort{ a,b -> a.getName().tokenize('.')[0] <=> b.getName().tokenize('.')[0] }.collate(2)
-                        [[
-                            data_type:key.data_type,
-                            id:key.id,
-                            numLanes:key.numLanes,
-                            patient: key.patient,
-                            read_group:key.read_group,
-                            sample:key.sample,
-                            sex:key.sex,
-                            size:read_files.size(),
-                            status:key.status,
-                        ],
-                        read_files]
-                    }.transpose()
-            }else{
-                ch_reads_to_map = FASTP.out.reads
-            }
+        //                 read_files = reads.sort{ a,b -> a.getName().tokenize('.')[0] <=> b.getName().tokenize('.')[0] }.collate(2)
+        //                 [[
+        //                     data_type:key.data_type,
+        //                     id:key.id,
+        //                     numLanes:key.numLanes,
+        //                     patient: key.patient,
+        //                     read_group:key.read_group,
+        //                     sample:key.sample,
+        //                     sex:key.sex,
+        //                     size:read_files.size(),
+        //                     status:key.status,
+        //                 ],
+        //                 read_files]
+        //             }.transpose()
+        //     }else{
+        //         ch_reads_to_map = FASTP.out.reads
+        //     }
 
-            ch_versions = ch_versions.mix(FASTP.out.versions)
-        } else {
-            ch_reads_to_map = ch_reads_fastp
-        }
+        //     ch_versions = ch_versions.mix(FASTP.out.versions)
+        // } else {
+        //     ch_reads_to_map = ch_reads_fastp
+        // }
 
-        // MAPPING READS TO REFERENCE GENOME
-        // reads will be sorted
-        ch_reads_to_map = ch_reads_to_map.map{ meta, reads ->
-            // update ID when no multiple lanes or splitted fastqs
-            new_id = meta.size * meta.numLanes == 1 ? meta.sample : meta.id
+        // // MAPPING READS TO REFERENCE GENOME
+        // // reads will be sorted
+        // ch_reads_to_map = ch_reads_to_map.map{ meta, reads ->
+        //     // update ID when no multiple lanes or splitted fastqs
+        //     new_id = meta.size * meta.numLanes == 1 ? meta.sample : meta.id
 
-            [[
-                data_type:  meta.data_type,
-                id:         new_id,
-                numLanes:   meta.numLanes,
-                patient:    meta.patient,
-                read_group: meta.read_group,
-                sample:     meta.sample,
-                sex:        meta.sex,
-                size:       meta.size,
-                status:     meta.status,
-                ],
-            reads]
-        }
+        //     [[
+        //         data_type:  meta.data_type,
+        //         id:         new_id,
+        //         numLanes:   meta.numLanes,
+        //         patient:    meta.patient,
+        //         read_group: meta.read_group,
+        //         sample:     meta.sample,
+        //         sex:        meta.sex,
+        //         size:       meta.size,
+        //         status:     meta.status,
+        //         ],
+        //     reads]
+        // }
 
-        sort_bam = true
-        GATK4_MAPPING(ch_reads_to_map, ch_map_index, sort_bam)
+        // sort_bam = true
+        // GATK4_MAPPING(ch_reads_to_map, ch_map_index, sort_bam)
 
-        // Grouping the bams from the same samples not to stall the workflow
-        ch_bam_mapped = GATK4_MAPPING.out.bam.map{ meta, bam ->
-            numLanes = meta.numLanes ?: 1
-            size     = meta.size     ?: 1
+        // // Grouping the bams from the same samples not to stall the workflow
+        // ch_bam_mapped = GATK4_MAPPING.out.bam.map{ meta, bam ->
+        //     numLanes = meta.numLanes ?: 1
+        //     size     = meta.size     ?: 1
 
-            // update ID to be based on the sample name
-            // update data_type
-            // remove no longer necessary fields:
-            //   read_group: Now in the BAM header
-            //     numLanes: Was only needed for mapping
-            //         size: Was only needed for mapping
-            new_meta = [
-                        id:meta.sample,
-                        data_type:"bam",
-                        patient:meta.patient,
-                        sample:meta.sample,
-                        sex:meta.sex,
-                        status:meta.status,
-                    ]
+        //     // update ID to be based on the sample name
+        //     // update data_type
+        //     // remove no longer necessary fields:
+        //     //   read_group: Now in the BAM header
+        //     //     numLanes: Was only needed for mapping
+        //     //         size: Was only needed for mapping
+        //     new_meta = [
+        //                 id:meta.sample,
+        //                 data_type:"bam",
+        //                 patient:meta.patient,
+        //                 sample:meta.sample,
+        //                 sex:meta.sex,
+        //                 status:meta.status,
+        //             ]
 
-            // Use groupKey to make sure that the correct group can advance as soon as it is complete
-            // and not stall the workflow until all reads from all channels are mapped
-            [ groupKey(new_meta, numLanes * size), bam]
-        }.groupTuple()
+        //     // Use groupKey to make sure that the correct group can advance as soon as it is complete
+        //     // and not stall the workflow until all reads from all channels are mapped
+        //     [ groupKey(new_meta, numLanes * size), bam]
+        // }.groupTuple()
 
-        // gatk4 markduplicates can handle multiple bams as input, so no need to merge/index here
-        // Except if and only if skipping markduplicates or saving mapped bams
-        if (params.save_bam_mapped || (params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) {
+        // // gatk4 markduplicates can handle multiple bams as input, so no need to merge/index here
+        // // Except if and only if skipping markduplicates or saving mapped bams
+        // if (params.save_bam_mapped || (params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) {
 
-            // bams are merged (when multiple lanes from the same sample), indexed and then converted to cram
-            MERGE_INDEX_BAM(ch_bam_mapped)
+        //     // bams are merged (when multiple lanes from the same sample), indexed and then converted to cram
+        //     MERGE_INDEX_BAM(ch_bam_mapped)
 
-            // Create CSV to restart from this step
-            MAPPING_CSV(MERGE_INDEX_BAM.out.bam_bai)
+        //     // Create CSV to restart from this step
+        //     MAPPING_CSV(MERGE_INDEX_BAM.out.bam_bai)
 
-            // Gather used softwares versions
-            ch_versions = ch_versions.mix(MERGE_INDEX_BAM.out.versions)
-        }
+        //     // Gather used softwares versions
+        //     ch_versions = ch_versions.mix(MERGE_INDEX_BAM.out.versions)
+        // }
 
-        // Gather used softwares versions
-        ch_versions = ch_versions.mix(GATK4_MAPPING.out.versions)
+        // // Gather used softwares versions
+        // ch_versions = ch_versions.mix(GATK4_MAPPING.out.versions)
     }
 
     // STEP 2: 

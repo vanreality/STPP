@@ -32,7 +32,7 @@ class WorkflowMain {
 
         // Check input has been provided
         if (!params.input) {
-            log.warn "No samplesheet specified, attempting to restart with csv files"
+            log.warn "No samplesheet specified, please restart with csv files"
         }
     }
 

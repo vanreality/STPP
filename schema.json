@@ -148,20 +148,6 @@
                     "description": "Save trimmed FastQ file intermediates.",
                     "hidden": true
                 },
-                "umi_read_structure": {
-                    "type": "string",
-                    "fa_icon": "fas fa-tape",
-                    "description": "Specify UMI read structure",
-                    "hidden": true,
-                    "help_text": "One structure if UMI is present on one end (i.e. '+T 2M11S+T'), or two structures separated by a blank space if UMIs a present on both ends (i.e. '2M11S+T 2M11S+T'); please note, this does not handle duplex-UMIs.\n\nFor more info on UMI usage in the pipeline, also check docs [here](./docs/usage.md/#how-to-handle-umis)."
-                },
-                "group_by_umi_strategy": {
-                    "type": "string",
-                    "default": "Adjacency",
-                    "description": "Default strategy with UMI",
-                    "hidden": true,
-                    "help_text": "Available values: Identity, Edit, Adjacency, Paired"
-                },
                 "save_split_fastqs": {
                     "type": "boolean",
                     "fa_icon": "fas fa-vial",
@@ -482,13 +468,6 @@
                     "fa_icon": "fas fa-copy",
                     "description": "If you use AWS iGenomes, this has already been set for you appropriately.\n\nlabel string for VariantRecalibration (haplotypecaller joint variant calling)"
                 },
-                "mappability": {
-                    "type": "string",
-                    "fa_icon": "fas fa-file",
-                    "description": "Path to Control-FREEC mappability file.",
-                    "hidden": true,
-                    "help_text": "If you use AWS iGenomes, this has already been set for you appropriately."
-                },
                 "snpeff_db": {
                     "type": "string",
                     "fa_icon": "fas fa-database",
@@ -643,12 +622,6 @@
                     "description": "Show all params when using `--help`",
                     "hidden": true,
                     "help_text": "By default, parameters set as _hidden_ in the schema are not shown on the command line when a user runs with `--help`. Specifying this option will tell the pipeline to show all parameters."
-                },
-                "enable_conda": {
-                    "type": "boolean",
-                    "description": "Run this workflow with Conda. You can also use '-profile conda' instead of providing this parameter.",
-                    "hidden": true,
-                    "fa_icon": "fas fa-bacon"
                 }
             }
         }
