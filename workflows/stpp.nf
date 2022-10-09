@@ -115,6 +115,7 @@ pon                = params.pon                ? Channel.fromPath(params.pon).co
 
 // Create samplesheets to restart from different steps
 include { MAPPING_CSV                                          } from '../subworkflows/local/mapping_csv'
+include { MARKDUPLICATES_CSV                                   } from '../subworkflows/local/markduplicates_csv'
 
 // Build indices if needed
 include { PREPARE_GENOME                                       } from '../subworkflows/local/prepare_genome'
@@ -131,7 +132,18 @@ include { GATK4_MAPPING                                        } from '../subwor
 // Merge and index BAM files (optional)
 include { MERGE_INDEX_BAM                                      } from '../subworkflows/nf-core/merge_index_bam'
 
+// Convert bam to cram and cram to bam
+include { SAMTOOLS_CONVERT as SAMTOOLS_CRAMTOBAM               } from '../modules/samtools/convert/main'
+include { SAMTOOLS_CONVERT as SAMTOOLS_CRAMTOBAM_RECAL         } from '../modules/samtools/convert/main'
 
+include { SAMTOOLS_CONVERT as SAMTOOLS_BAMTOCRAM               } from '../modules/samtools/convert/main'
+include { SAMTOOLS_CONVERT as SAMTOOLS_BAMTOCRAM_VARIANTCALLING} from '../modules/samtools/convert/main'
+
+// Mark Duplicates (+QC)
+include { MARKDUPLICATES                                       } from '../subworkflows/nf-core/gatk4/markduplicates/main'
+
+// Convert to CRAM (+QC)
+include { BAM_TO_CRAM                                          } from '../subworkflows/nf-core/bam_to_cram'
 
 
 
@@ -208,113 +220,206 @@ workflow STPP{
             ch_versions = ch_versions.mix(RUN_FASTQC.out.versions)
         }
 
-        // ch_reads_fastp = ch_input_sample
+        ch_reads_fastp = ch_input_sample
 
-        // // Trimming and/or splitting
-        // if (params.trim_fastq) {
+        // Trimming and/or splitting
+        if (params.trim_fastq) {
 
-        //     save_trimmed_fail = false
-        //     save_merged = false
-        //     FASTP(ch_reads_fastp, save_trimmed_fail, save_merged)
+            save_trimmed_fail = false
+            save_merged = false
+            FASTP(ch_reads_fastp, save_trimmed_fail, save_merged)
 
-        //     ch_reports = ch_reports.mix(
-        //                             FASTP.out.json.collect{meta, json -> json},
-        //                             FASTP.out.html.collect{meta, html -> html}
-        //                             )
+            ch_reports = ch_reports.mix(
+                                    FASTP.out.json.collect{meta, json -> json},
+                                    FASTP.out.html.collect{meta, html -> html}
+                                    )
 
-        //     if(params.split_fastq){
-        //         ch_reads_to_map = FASTP.out.reads.map{ key, reads ->
+            if(params.split_fastq){
+                ch_reads_to_map = FASTP.out.reads.map{ key, reads ->
 
-        //                 read_files = reads.sort{ a,b -> a.getName().tokenize('.')[0] <=> b.getName().tokenize('.')[0] }.collate(2)
-        //                 [[
-        //                     data_type:key.data_type,
-        //                     id:key.id,
-        //                     numLanes:key.numLanes,
-        //                     patient: key.patient,
-        //                     read_group:key.read_group,
-        //                     sample:key.sample,
-        //                     sex:key.sex,
-        //                     size:read_files.size(),
-        //                     status:key.status,
-        //                 ],
-        //                 read_files]
-        //             }.transpose()
-        //     }else{
-        //         ch_reads_to_map = FASTP.out.reads
-        //     }
+                        read_files = reads.sort{ a,b -> a.getName().tokenize('.')[0] <=> b.getName().tokenize('.')[0] }.collate(2)
+                        [[
+                            data_type:key.data_type,
+                            id:key.id,
+                            numLanes:key.numLanes,
+                            patient: key.patient,
+                            read_group:key.read_group,
+                            sample:key.sample,
+                            sex:key.sex,
+                            size:read_files.size(),
+                            status:key.status,
+                        ],
+                        read_files]
+                    }.transpose()
+            }else{
+                ch_reads_to_map = FASTP.out.reads
+            }
 
-        //     ch_versions = ch_versions.mix(FASTP.out.versions)
-        // } else {
-        //     ch_reads_to_map = ch_reads_fastp
-        // }
+            ch_versions = ch_versions.mix(FASTP.out.versions)
+        } else {
+            ch_reads_to_map = ch_reads_fastp
+        }
 
-        // // MAPPING READS TO REFERENCE GENOME
-        // // reads will be sorted
-        // ch_reads_to_map = ch_reads_to_map.map{ meta, reads ->
-        //     // update ID when no multiple lanes or splitted fastqs
-        //     new_id = meta.size * meta.numLanes == 1 ? meta.sample : meta.id
+        // MAPPING READS TO REFERENCE GENOME
+        // reads will be sorted
+        ch_reads_to_map = ch_reads_to_map.map{ meta, reads ->
+            // update ID when no multiple lanes or splitted fastqs
+            new_id = meta.size * meta.numLanes == 1 ? meta.sample : meta.id
 
-        //     [[
-        //         data_type:  meta.data_type,
-        //         id:         new_id,
-        //         numLanes:   meta.numLanes,
-        //         patient:    meta.patient,
-        //         read_group: meta.read_group,
-        //         sample:     meta.sample,
-        //         sex:        meta.sex,
-        //         size:       meta.size,
-        //         status:     meta.status,
-        //         ],
-        //     reads]
-        // }
+            [[
+                data_type:  meta.data_type,
+                id:         new_id,
+                numLanes:   meta.numLanes,
+                patient:    meta.patient,
+                read_group: meta.read_group,
+                sample:     meta.sample,
+                sex:        meta.sex,
+                size:       meta.size,
+                status:     meta.status,
+                ],
+            reads]
+        }
 
-        // sort_bam = true
-        // GATK4_MAPPING(ch_reads_to_map, ch_map_index, sort_bam)
+        sort_bam = true
+        GATK4_MAPPING(ch_reads_to_map, ch_map_index, sort_bam)
 
-        // // Grouping the bams from the same samples not to stall the workflow
-        // ch_bam_mapped = GATK4_MAPPING.out.bam.map{ meta, bam ->
-        //     numLanes = meta.numLanes ?: 1
-        //     size     = meta.size     ?: 1
+        // Grouping the bams from the same samples not to stall the workflow
+        ch_bam_mapped = GATK4_MAPPING.out.bam.map{ meta, bam ->
+            numLanes = meta.numLanes ?: 1
+            size     = meta.size     ?: 1
 
-        //     // update ID to be based on the sample name
-        //     // update data_type
-        //     // remove no longer necessary fields:
-        //     //   read_group: Now in the BAM header
-        //     //     numLanes: Was only needed for mapping
-        //     //         size: Was only needed for mapping
-        //     new_meta = [
-        //                 id:meta.sample,
-        //                 data_type:"bam",
-        //                 patient:meta.patient,
-        //                 sample:meta.sample,
-        //                 sex:meta.sex,
-        //                 status:meta.status,
-        //             ]
+            // update ID to be based on the sample name
+            // update data_type
+            // remove no longer necessary fields:
+            //   read_group: Now in the BAM header
+            //     numLanes: Was only needed for mapping
+            //         size: Was only needed for mapping
+            new_meta = [
+                        id:meta.sample,
+                        data_type:"bam",
+                        patient:meta.patient,
+                        sample:meta.sample,
+                        sex:meta.sex,
+                        status:meta.status,
+                    ]
 
-        //     // Use groupKey to make sure that the correct group can advance as soon as it is complete
-        //     // and not stall the workflow until all reads from all channels are mapped
-        //     [ groupKey(new_meta, numLanes * size), bam]
-        // }.groupTuple()
+            // Use groupKey to make sure that the correct group can advance as soon as it is complete
+            // and not stall the workflow until all reads from all channels are mapped
+            [ groupKey(new_meta, numLanes * size), bam]
+        }.groupTuple()
 
-        // // gatk4 markduplicates can handle multiple bams as input, so no need to merge/index here
-        // // Except if and only if skipping markduplicates or saving mapped bams
-        // if (params.save_bam_mapped || (params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) {
+        // gatk4 markduplicates can handle multiple bams as input, so no need to merge/index here
+        // Except if and only if skipping markduplicates or saving mapped bams
+        if (params.save_bam_mapped || (params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) {
 
-        //     // bams are merged (when multiple lanes from the same sample), indexed and then converted to cram
-        //     MERGE_INDEX_BAM(ch_bam_mapped)
+            // bams are merged (when multiple lanes from the same sample), indexed and then converted to cram
+            MERGE_INDEX_BAM(ch_bam_mapped)
 
-        //     // Create CSV to restart from this step
-        //     MAPPING_CSV(MERGE_INDEX_BAM.out.bam_bai)
+            // Create CSV to restart from this step
+            MAPPING_CSV(MERGE_INDEX_BAM.out.bam_bai)
 
-        //     // Gather used softwares versions
-        //     ch_versions = ch_versions.mix(MERGE_INDEX_BAM.out.versions)
-        // }
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(MERGE_INDEX_BAM.out.versions)
+        }
 
-        // // Gather used softwares versions
-        // ch_versions = ch_versions.mix(GATK4_MAPPING.out.versions)
+        // Gather used softwares versions
+        ch_versions = ch_versions.mix(GATK4_MAPPING.out.versions)
     }
 
-    // STEP 2: 
+    // STEP 2: markduplicates (+QC) + convert to CRAM
+    if (params.step in ['mapping', 'markduplicates']) {
+
+        // ch_bam_for_markduplicates will countain bam mapped with GATK4_MAPPING when step is mapping
+        // Or bams that are specified in the samplesheet.csv when step is prepare_recalibration
+        // ch_bam_for_markduplicates = params.step == 'mapping'? ch_bam_mapped : ch_input_sample.map{ meta, input, index -> [meta, input] }
+
+        ch_bam_for_markduplicates   = Channel.empty()
+        ch_input_cram_indexed       = Channel.empty()
+        ch_cram_no_markduplicates   = Channel.empty()
+        ch_cram_markduplicates      = Channel.empty()
+        intervals_for_preprocessing = []
+
+        if (params.step == 'mapping') ch_bam_for_markduplicates = ch_bam_mapped
+        else {
+            ch_input_sample.branch{
+                bam:  it[0].data_type == "bam"
+                cram: it[0].data_type == "cram"
+            }.set{ch_convert}
+
+            ch_bam_for_markduplicates = ch_convert.bam.map{ meta, bam, bai -> [meta, bam]}
+
+            //In case Markduplicates is run convert CRAM files to BAM, because the tool only runs on BAM files. MD_SPARK does run on CRAM but is a lot slower
+            if (!(params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))){
+
+                SAMTOOLS_CRAMTOBAM(ch_convert.cram, fasta, fasta_fai)
+                ch_versions = ch_versions.mix(SAMTOOLS_CRAMTOBAM.out.versions)
+
+                ch_bam_for_markduplicates = ch_bam_for_markduplicates.mix(SAMTOOLS_CRAMTOBAM.out.alignment_index.map{ meta, bam, bai -> [meta, bam]})
+            } else {
+                ch_input_cram_indexed     = ch_convert.cram
+            }
+        }
+
+        if (params.skip_tools && params.skip_tools.split(',').contains('markduplicates')) {
+
+            // ch_bam_indexed will countain bam mapped with GATK4_MAPPING when step is mapping
+            // which are then merged and indexed
+            // Or bams that are specified in the samplesheet.csv when step is prepare_recalibration
+            ch_bam_indexed = params.step == 'mapping' ? MERGE_INDEX_BAM.out.bam_bai : ch_convert.bam
+
+            BAM_TO_CRAM(
+                ch_bam_indexed,
+                ch_input_cram_indexed,
+                fasta,
+                fasta_fai,
+                intervals_for_preprocessing)
+
+            ch_cram_no_markduplicates = BAM_TO_CRAM.out.cram_converted
+
+            // Gather QC reports
+            ch_reports  = ch_reports.mix(BAM_TO_CRAM.out.qc.collect{meta, report -> report})
+
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(BAM_TO_CRAM.out.versions)
+        } else {
+            MARKDUPLICATES(
+                ch_bam_for_markduplicates,
+                fasta,
+                fasta_fai,
+                intervals_for_preprocessing)
+
+            ch_cram_markduplicates = MARKDUPLICATES.out.cram
+
+            // Gather QC reports
+            ch_reports  = ch_reports.mix(MARKDUPLICATES.out.qc.collect{meta, report -> report})
+
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(MARKDUPLICATES.out.versions)
+        }
+
+        // ch_md_cram_for_restart contains either:
+        // - crams from markduplicates
+        // - crams from markduplicates_spark
+        // - crams converted from bam mapped when skipping markduplicates
+        ch_md_cram_for_restart = Channel.empty().mix(
+            ch_cram_markduplicates,
+            ch_cram_no_markduplicates).map{ meta, cram, crai ->
+                        //Make sure correct data types are carried through
+                        [[
+                            data_type:  "cram",
+                            id:         meta.id,
+                            patient:    meta.patient,
+                            sample:     meta.sample,
+                            sex:        meta.sex,
+                            status:     meta.status
+                            ],
+                        cram, crai]
+                    }
+
+        // CSV should be written for the file actually out, either CRAM or BAM
+        // Create CSV to restart from this step
+        if (!(params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) MARKDUPLICATES_CSV(ch_md_cram_for_restart)
+    }
 
 
 

@@ -181,13 +181,6 @@
                     "description": "Saves output from Markduplicates & Baserecalibration as BAM file instead of CRAM",
                     "fa_icon": "fas fa-download"
                 },
-                "use_gatk_spark": {
-                    "type": "string",
-                    "fa_icon": "fas fa-forward",
-                    "description": "Enable usage of GATK Spark implementation for duplicate marking and/or base quality score recalibration",
-                    "help_text": "Multiple separated with commas.\n\n> The GATK4 Base Quality Score recalibration tools `Baserecalibrator` and `ApplyBQSR` are currently available as Beta release. Use with caution!",
-                    "pattern": "^((baserecalibrator|markduplicates)*,?)*$"
-                },
                 "seq_center": {
                     "type": "string",
                     "fa_icon": "fas fa-university",
