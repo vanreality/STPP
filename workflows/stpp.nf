@@ -116,9 +116,14 @@ pon                = params.pon                ? Channel.fromPath(params.pon).co
 // Create samplesheets to restart from different steps
 include { MAPPING_CSV                                          } from '../subworkflows/local/mapping_csv'
 include { MARKDUPLICATES_CSV                                   } from '../subworkflows/local/markduplicates_csv'
+include { PREPARE_RECALIBRATION_CSV                            } from '../subworkflows/local/prepare_recalibration_csv'
+include { RECALIBRATE_CSV                                      } from '../subworkflows/local/recalibrate_csv'
 
 // Build indices if needed
 include { PREPARE_GENOME                                       } from '../subworkflows/local/prepare_genome'
+
+// Build intervals if needed
+include { PREPARE_INTERVALS                                    } from '../subworkflows/local/prepare_intervals'
 
 // Run FASTQC
 include { RUN_FASTQC                                           } from '../subworkflows/nf-core/run_fastqc'
@@ -144,6 +149,15 @@ include { MARKDUPLICATES                                       } from '../subwor
 
 // Convert to CRAM (+QC)
 include { BAM_TO_CRAM                                          } from '../subworkflows/nf-core/bam_to_cram'
+
+// Create recalibration tables
+include { PREPARE_RECALIBRATION                                } from '../subworkflows/nf-core/gatk4/prepare_recalibration/main'
+
+// Create recalibrated cram files to use for variant calling (+QC)
+include { RECALIBRATE                                          } from '../subworkflows/nf-core/gatk4/recalibrate/main'
+
+// QC on CRAM
+include { CRAM_QC                                              } from '../subworkflows/nf-core/cram_qc'
 
 
 
@@ -200,9 +214,18 @@ workflow STPP{
     known_sites_snps     = dbsnp.concat(known_snps).collect()
     known_sites_snps_tbi = dbsnp_tbi.concat(known_snps_tbi).collect()
 
+    // Build intervals if needed
+    PREPARE_INTERVALS(fasta_fai)
+
+    // Intervals for speed up preprocessing/variant calling by spread/gather
+    intervals_bed_combined      = params.no_intervals ? Channel.value([])      : PREPARE_INTERVALS.out.intervals_bed_combined  // [interval.bed] all intervals in one file
+    intervals_for_preprocessing = []      // For QC during preprocessing, we don't need any intervals
+
+    intervals                   = PREPARE_INTERVALS.out.intervals_bed        // [interval, num_intervals] multiple interval.bed files, divided by useful intervals for scatter/gather
+    intervals_bed_gz_tbi        = PREPARE_INTERVALS.out.intervals_bed_gz_tbi // [interval_bed, tbi, num_intervals] multiple interval.bed.gz/.tbi files, divided by useful intervals for scatter/gather
+
     // Gather used softwares versions
     ch_versions = ch_versions.mix(PREPARE_GENOME.out.versions)
-
 
     // STEP 1: MAPPING
     if (params.step == 'mapping') {
@@ -337,7 +360,6 @@ workflow STPP{
         ch_input_cram_indexed       = Channel.empty()
         ch_cram_no_markduplicates   = Channel.empty()
         ch_cram_markduplicates      = Channel.empty()
-        intervals_for_preprocessing = []
 
         if (params.step == 'mapping') ch_bam_for_markduplicates = ch_bam_mapped
         else {
@@ -348,7 +370,7 @@ workflow STPP{
 
             ch_bam_for_markduplicates = ch_convert.bam.map{ meta, bam, bai -> [meta, bam]}
 
-            //In case Markduplicates is run convert CRAM files to BAM, because the tool only runs on BAM files. MD_SPARK does run on CRAM but is a lot slower
+            //In case Markduplicates is run convert CRAM files to BAM, because the tool only runs on BAM files.
             if (!(params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))){
 
                 SAMTOOLS_CRAMTOBAM(ch_convert.cram, fasta, fasta_fai)
@@ -399,7 +421,6 @@ workflow STPP{
 
         // ch_md_cram_for_restart contains either:
         // - crams from markduplicates
-        // - crams from markduplicates_spark
         // - crams converted from bam mapped when skipping markduplicates
         ch_md_cram_for_restart = Channel.empty().mix(
             ch_cram_markduplicates,
@@ -421,10 +442,158 @@ workflow STPP{
         if (!(params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) MARKDUPLICATES_CSV(ch_md_cram_for_restart)
     }
 
+    // STEP 3: prepare BQSR
+    if (params.step in ['mapping', 'markduplicates', 'prepare_recalibration']) {
 
+        // Run if starting from step "prepare_recalibration" to get input
+        if(params.step == 'prepare_recalibration'){
 
+            //Support if starting from BAM or CRAM files
+            ch_input_sample.branch{
+                bam: it[0].data_type == "bam"
+                cram: it[0].data_type == "cram"
+            }.set{ch_convert}
 
+            //BAM files first must be converted to CRAM files since from this step on we base everything on CRAM format
+            SAMTOOLS_BAMTOCRAM(ch_convert.bam, fasta, fasta_fai)
+            ch_versions = ch_versions.mix(SAMTOOLS_BAMTOCRAM.out.versions)
 
+            ch_cram_for_prepare_recalibration = Channel.empty().mix(SAMTOOLS_BAMTOCRAM.out.alignment_index, ch_convert.cram)
+
+            ch_md_cram_for_restart = SAMTOOLS_BAMTOCRAM.out.alignment_index
+
+        } else {
+
+            // ch_cram_for_prepare_recalibration contains either:
+            // - crams from markduplicates
+            // - crams converted from bam mapped when skipping markduplicates
+            // - input cram files, when start from step markduplicates
+            //ch_md_cram_for_restart.view() //contains md.cram.crai
+            ch_cram_for_prepare_recalibration = Channel.empty().mix(ch_md_cram_for_restart, ch_input_cram_indexed)
+        }
+
+        // Create recalibration tables
+        if (!(params.skip_tools && params.skip_tools.split(',').contains('baserecalibrator'))) {
+            ch_table_bqsr = Channel.empty()
+
+            PREPARE_RECALIBRATION(
+                ch_cram_for_prepare_recalibration,
+                dict,
+                fasta,
+                fasta_fai,
+                intervals,
+                known_sites_indels,
+                known_sites_indels_tbi)
+
+            ch_table_bqsr = PREPARE_RECALIBRATION.out.table_bqsr
+
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(PREPARE_RECALIBRATION.out.versions)
+
+            ch_reports  = ch_reports.mix(ch_table_bqsr.collect{ meta, table -> table})
+
+            ch_cram_applybqsr = ch_cram_for_prepare_recalibration.join(ch_table_bqsr)
+
+            // Create CSV to restart from this step
+            PREPARE_RECALIBRATION_CSV(ch_md_cram_for_restart.join(ch_table_bqsr), params.skip_tools)
+        }
+    }
+
+    // STEP 4: BQSR
+    if (params.step in ['mapping', 'markduplicates', 'prepare_recalibration', 'recalibrate']) {
+
+        // Run if starting from step "prepare_recalibration"
+        if(params.step == 'recalibrate'){
+
+            //Support if starting from BAM or CRAM files
+            ch_input_sample.branch{
+                bam: it[0].data_type == "bam"
+                cram: it[0].data_type == "cram"
+            }.set{ch_convert}
+
+            //If BAM file, split up table and mapped file to convert BAM to CRAM
+            ch_bam_table = ch_convert.bam.map{ meta, bam, bai, table -> [meta, table]}
+            ch_bam_bam   = ch_convert.bam.map{ meta, bam, bai, table -> [meta, bam, bai]}
+
+            //BAM files first must be converted to CRAM files since from this step on we base everything on CRAM format
+            SAMTOOLS_BAMTOCRAM(ch_bam_bam, fasta, fasta_fai)
+            ch_versions = ch_versions.mix(SAMTOOLS_BAMTOCRAM.out.versions)
+
+            ch_cram_applybqsr = Channel.empty().mix(
+                                    SAMTOOLS_BAMTOCRAM.out.alignment_index.join(ch_bam_table),
+                                    ch_convert.cram) // Join together converted cram with input tables
+        }
+
+        if (!(params.skip_tools && params.skip_tools.split(',').contains('baserecalibrator'))) {
+            ch_cram_variant_calling = Channel.empty()
+
+            RECALIBRATE(
+                ch_cram_applybqsr,
+                dict,
+                fasta,
+                fasta_fai,
+                intervals)
+
+            ch_cram_variant_calling = RECALIBRATE.out.cram
+
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(RECALIBRATE.out.versions)
+
+            CRAM_QC(
+                ch_cram_variant_calling,
+                fasta,
+                fasta_fai,
+                intervals_for_preprocessing)
+
+            // Gather QC reports
+            ch_reports  = ch_reports.mix(CRAM_QC.out.qc.collect{meta, report -> report})
+
+            // Gather used softwares versions
+            ch_versions = ch_versions.mix(CRAM_QC.out.versions)
+
+            //If params.save_output_as_bam, then convert CRAM files to BAM
+            SAMTOOLS_CRAMTOBAM_RECAL(ch_cram_variant_calling, fasta, fasta_fai)
+            ch_versions = ch_versions.mix(SAMTOOLS_CRAMTOBAM_RECAL.out.versions)
+
+            // CSV should be written for the file actually out out, either CRAM or BAM
+            csv_recalibration = Channel.empty()
+            csv_recalibration = params.save_output_as_bam ?  SAMTOOLS_CRAMTOBAM_RECAL.out.alignment_index : ch_cram_variant_calling
+
+            // Create CSV to restart from this step
+            RECALIBRATE_CSV(csv_recalibration)
+
+        } else if (params.step == 'recalibrate'){
+            // ch_cram_variant_calling contains either:
+            // - input bams converted to crams, if started from step recal + skip BQSR
+            // - input crams if started from step recal + skip BQSR
+            ch_cram_variant_calling = Channel.empty().mix(SAMTOOLS_BAMTOCRAM.out.alignment_index,
+                                                        ch_convert.cram.map{ meta, cram, crai, table -> [meta, cram, crai]})
+        } else {
+            // ch_cram_variant_calling contains either:
+            // - crams from markduplicates = ch_cram_for_prepare_recalibration if skip BQSR but not started from step recalibration
+            ch_cram_variant_calling = Channel.empty().mix(ch_cram_for_prepare_recalibration)
+        }
+    }
+
+    // STEP 5: Variant calling
+    if (params.step == 'variant_calling') {
+
+        ch_input_sample.branch{
+                bam: it[0].data_type == "bam"
+                cram: it[0].data_type == "cram"
+            }.set{ch_convert}
+
+        //BAM files first must be converted to CRAM files since from this step on we base everything on CRAM format
+        SAMTOOLS_BAMTOCRAM_VARIANTCALLING(ch_convert.bam, fasta, fasta_fai)
+        ch_versions = ch_versions.mix(SAMTOOLS_BAMTOCRAM_VARIANTCALLING.out.versions)
+
+        ch_cram_variant_calling = Channel.empty().mix(SAMTOOLS_BAMTOCRAM_VARIANTCALLING.out.alignment_index, ch_convert.cram)
+
+    }
+
+    if (params.tools) {
+
+    }
 
 }
 
