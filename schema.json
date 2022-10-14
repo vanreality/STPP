@@ -209,6 +209,12 @@
             "default": "",
             "fa_icon": "fas fa-toolbox",
             "properties": {
+                "only_paired_variant_calling": {
+                    "type": "boolean",
+                    "fa_icon": "fas fa-forward",
+                    "description": "If true, skips germline variant calling for matched normal to tumor sample. Normal samples without matched tumor will still be processed through germline variant calling tools.",
+                    "help_text": "This can speed up computation for somatic variant calling with matched normal samples. If false, all normal samples are processed as well through the germline variantcalling tools. If true, only somatic variant calling is done."
+                },
                 "pon": {
                     "type": "string",
                     "fa_icon": "fas fa-file",
@@ -555,7 +561,7 @@
                 "max_memory": {
                     "type": "string",
                     "description": "Maximum amount of memory that can be requested for any single job.",
-                    "default": "16.GB",
+                    "default": "30.GB",
                     "fa_icon": "fas fa-memory",
                     "pattern": "^\\d+(\\.\\d+)?\\.?\\s*(K|M|G|T)?B$",
                     "hidden": true,
