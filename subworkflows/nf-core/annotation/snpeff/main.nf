@@ -7,14 +7,15 @@ include { TABIX_BGZIPTABIX } from '../../../../modules/tabix/bgziptabix/main'
 
 workflow ANNOTATION_SNPEFF {
     take:
-    vcf          // channel: [ val(meta), vcf ]
-    snpeff_db    //   value: db version to use
-    snpeff_cache //    path: /path/to/snpeff/cache (optionnal)
+    vcf           // channel: [ val(meta), vcf ]
+    snpeff_db     // value: db version to use
+    snpeff_db_dir // path: /path/to/snpeff/database
+    snpeff_cache  // path: /path/to/snpeff/cache (optionnal)
 
     main:
     ch_versions = Channel.empty()
 
-    SNPEFF(vcf, snpeff_db, snpeff_cache)
+    SNPEFF(vcf, snpeff_db, snpeff_db_dir, snpeff_cache)
     TABIX_BGZIPTABIX(SNPEFF.out.vcf)
 
     // Gather versions of all tools used

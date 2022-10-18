@@ -5,6 +5,7 @@ process SNPEFF {
     input:
     tuple val(meta), path(vcf)
     val   db
+    val   db_dir
     path  cache
 
     output:
@@ -31,6 +32,7 @@ process SNPEFF {
     snpEff \\
         -Xmx${avail_mem}g \\
         $db \\
+        -dataDir $db_dir \\
         $args \\
         -csvStats ${prefix}.csv \\
         $cache_command \\

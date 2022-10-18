@@ -12,6 +12,7 @@ workflow ANNOTATE {
     fasta
     tools        // Mandatory, list of tools to apply
     snpeff_db
+    snpeff_db_dir
     snpeff_cache
     vep_genome
     vep_species
@@ -27,7 +28,7 @@ workflow ANNOTATE {
     ch_versions  = Channel.empty()
 
     if (tools.split(',').contains('merge') || tools.split(',').contains('snpeff')) {
-        ANNOTATION_SNPEFF(vcf, snpeff_db, snpeff_cache)
+        ANNOTATION_SNPEFF(vcf, snpeff_db, snpeff_db_dir, snpeff_cache)
 
         ch_reports  = ch_reports.mix(ANNOTATION_SNPEFF.out.reports)
         ch_vcf_ann  = ch_vcf_ann.mix(ANNOTATION_SNPEFF.out.vcf_tbi)

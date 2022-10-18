@@ -34,6 +34,7 @@ params.known_indels_vqsr     = WorkflowMain.getGenomeAttribute(params, 'known_in
 params.pon                   = WorkflowMain.getGenomeAttribute(params, 'pon')
 params.pon_tbi               = WorkflowMain.getGenomeAttribute(params, 'pon_tbi')
 params.snpeff_db             = WorkflowMain.getGenomeAttribute(params, 'snpeff_db')
+params.snpeff_db_dir         = WorkflowMain.getGenomeAttribute(params, 'snpeff_db_dir')
 params.snpeff_genome         = WorkflowMain.getGenomeAttribute(params, 'snpeff_genome')
 params.snpeff_version        = WorkflowMain.getGenomeAttribute(params, 'snpeff_version')
 params.vep_cache_version     = WorkflowMain.getGenomeAttribute(params, 'vep_cache_version')

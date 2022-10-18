@@ -45,11 +45,12 @@ for (param in checkPathParamList) if (param) file(param, checkIfExists: true)
 // Set input, can either be from --input or from automatic retrieval in WorkflowSarek.groovy
 ch_input_sample = extract_csv(file(params.input, checkIfExists: true))
 
-// Fails when no intervals file provided
-if (!params.intervals){
-    log.error "Target file specified with `--intervals` must be provided"
-    exit 1
-}
+// TODO DEBUG wes interval error
+// // Fails when no intervals file provided
+// if (!params.intervals){
+//     log.error "Target file specified with `--intervals` must be provided"
+//     exit 1
+// }
 
 // Fails when wrongfull extension for intervals file
 if (params.intervals && !params.intervals.endsWith("bed")){
@@ -102,6 +103,7 @@ pon                = params.pon                ? Channel.fromPath(params.pon).co
 
 // Initialize value channels based on params, defined in the params.genomes[params.genome] scope
 snpeff_db          = params.snpeff_db          ?: Channel.empty()
+snpeff_db_dir      = params.snpeff_db_dir      ?: Channel.empty()
 vep_cache_version  = params.vep_cache_version  ?: Channel.empty()
 vep_genome         = params.vep_genome         ?: Channel.empty()
 vep_species        = params.vep_species        ?: Channel.empty()
@@ -730,6 +732,7 @@ workflow STPP{
                 vep_fasta,
                 params.tools,
                 snpeff_db,
+                snpeff_db_dir,
                 snpeff_cache,
                 vep_genome,
                 vep_species,
