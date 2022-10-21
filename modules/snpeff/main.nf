@@ -5,8 +5,7 @@ process SNPEFF {
     input:
     tuple val(meta), path(vcf)
     val   db
-    val   db_dir
-    path  cache
+    val   cache
 
     output:
     tuple val(meta), path("*.ann.vcf"), emit: vcf
@@ -27,12 +26,11 @@ process SNPEFF {
         avail_mem = task.memory.giga
     }
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def cache_command = cache ? "-dataDir \${PWD}/${cache}" : ""
+    def cache_command = cache ? "-dataDir ${cache}" : ""
     """
     snpEff \\
         -Xmx${avail_mem}g \\
         $db \\
-        -dataDir $db_dir \\
         $args \\
         -csvStats ${prefix}.csv \\
         $cache_command \\

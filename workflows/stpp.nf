@@ -32,6 +32,7 @@ def checkPathParamList = [
     params.spliceai_indel_tbi,
     params.spliceai_snv,
     params.spliceai_snv_tbi,
+    params.snpeff_cache,
     params.vep_cache
 ]
 
@@ -103,14 +104,11 @@ pon                = params.pon                ? Channel.fromPath(params.pon).co
 
 // Initialize value channels based on params, defined in the params.genomes[params.genome] scope
 snpeff_db          = params.snpeff_db          ?: Channel.empty()
-snpeff_db_dir      = params.snpeff_db_dir      ?: Channel.empty()
 vep_cache_version  = params.vep_cache_version  ?: Channel.empty()
 vep_genome         = params.vep_genome         ?: Channel.empty()
 vep_species        = params.vep_species        ?: Channel.empty()
-
-// Initialize files channels based on params, not defined within the params.genomes[params.genome] scope
-snpeff_cache       = params.snpeff_cache       ? Channel.fromPath(params.snpeff_cache).collect()             : []
-vep_cache          = params.vep_cache          ? Channel.fromPath(params.vep_cache).collect()                : []
+vep_cache          = params.vep_cache          ?: Channel.empty()
+snpeff_cache       = params.snpeff_cache       ?: Channel.empty()
 
 vep_extra_files = []
 
@@ -732,7 +730,6 @@ workflow STPP{
                 vep_fasta,
                 params.tools,
                 snpeff_db,
-                snpeff_db_dir,
                 snpeff_cache,
                 vep_genome,
                 vep_species,
@@ -746,7 +743,7 @@ workflow STPP{
         }
     }
 
-
+    // TODO QC report
 
 }
 
